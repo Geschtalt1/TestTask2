@@ -9,6 +9,7 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBeginFireSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnEndFireSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAmmoNullSignature);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFireHitResultSignature, FHitResult, HitInfo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAmmoNewCurrentSignature, int32, NewAmmoCurrent);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAmmoNewTotalSignature, int32, NewAmmoTotal);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnReloadingSignature, UAnimMontage*, Animation);
@@ -95,9 +96,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (NoResetToDefault, ClampMin = 0))
 	float FireRate = 0.0f;
 
-	/** Кобура. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (NoResetToDefault))
-	EHolster Holster = EHolster::EH_None;
+	/** Разброс. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (NoResetToDefault, ClampMin = 0))
+	float Spread = 0.0f;
 
 	/** Режим стрельбы. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (NoResetToDefault))
@@ -158,12 +159,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Gun|Ammo")
 	void SetAmmoTotal(int32 NewTotal);
 
+	/** Рассчитывает трейс оружия. */
+	UFUNCTION(BlueprintCallable, Category = "Gun|Trace")
+	virtual bool CalculateFiringTrace();
+
+	/** Создает трейс из камеры. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Gun|Trace")
+	bool CalculateTraceFromCamera(FVector& Start, FVector& End);
+
+	/** Рассчитывает разброс трейса. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Gun|Trace")
+	FVector CalculateSpread(const FVector& InputTrace) const;
+
 public:
 	/** Возращает true, если в текущий момент патронов в маазине больше нуля. */
 	UFUNCTION(BlueprintCallable, Category = "Gun|Ammo")
 	FORCEINLINE bool IsAmmo() const { return GetAmmoCurrent() > 0; }
 
-	/** Возращает текущее кол-во патронов. */
+	/** Возращает текущее кол-во патронов в магазине. */
 	UFUNCTION(BlueprintCallable, Category = "Gun|Ammo")
 	FORCEINLINE int32 GetAmmoCurrent() const { return Gun.Ammo.AmmoCurrentInMag; }
 
@@ -180,6 +193,9 @@ public:
 
 	/** Возращает ссылку на мешь пистолета. */
 	FORCEINLINE class USkeletalMeshComponent* GetMesh() const { return GunMesh; }
+
+	/** Возращает камеру владельца. */
+	class UCameraComponent* GetCameraOwner();
 
 public:
 	/** Делегат вызывается когда пистолет делает выстрел. */
@@ -206,10 +222,18 @@ public:
 	UPROPERTY(BlueprintReadWrite, BlueprintAssignable, BlueprintCallable, meta = (DisplayName = "On Reloading"))
 	FOnReloadingSignature OnReloading;
 
+	/** Делегат результат выстрела. */
+	UPROPERTY(BlueprintReadWrite, BlueprintAssignable, BlueprintCallable, meta = (DisplayName = "On Fire Hit Result"))
+	FOnFireHitResultSignature OnFireHitResult;
+
 public:
-	/** Сокеты ствола и прицела. */
+	/** Включить дебаг трейса оружия. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Gun Setting|Advanced")
+	uint8 bDrawDebug : 1;
+
+public:
+	/** Сокет ствола. */
 	static const FName MUZZLE_SOCKET;
-	static const FName IRONSIGHT_SOCKET;
 
 protected:
 	virtual void BeginPlay() override;
@@ -224,7 +248,10 @@ private:
 	void PlaySoundFire();
 
 	/** Спавн эффекта вспышки. */
-	void SpawnEffectMuzzle(); // Должен быть мультикаст
+	void SpawnEffectMuzzle();
+
+	/** Проверяет куда попал трейс. */
+	void CheckTraceHit(const FHitResult& Hit);
 
 private:
 	/** Скелет пистолета. */
@@ -244,6 +271,10 @@ private:
 	/** Настройка пистолета. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, meta = (AllowPrivateAccess = "true", ExposeOnSpawn = "true"), Category = "Gun Setting")
 	FGun Gun;
+
+	/** Камера владельца. */
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Gun Setting|Private")
+	TObjectPtr<class UCameraComponent> CameraOwner;
 
 	/** Таймер стрельбы. */
 	UPROPERTY()

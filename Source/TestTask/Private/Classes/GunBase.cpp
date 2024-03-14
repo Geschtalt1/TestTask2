@@ -4,6 +4,7 @@
 #include "Other/Macros.h"
 
 #include "Components/SkeletalMeshComponent.h"
+#include "Camera/CameraComponent.h"
 
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -16,7 +17,6 @@
 #include "Net/UnrealNetwork.h"
 
 const FName AGunBase::MUZZLE_SOCKET = { "muzzle" };
-const FName AGunBase::IRONSIGHT_SOCKET = { "ironsight" };
 AGunBase::AGunBase(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer)
 {
@@ -29,6 +29,7 @@ AGunBase::AGunBase(const FObjectInitializer& ObjectInitializer)
 
 	bFire = false;
 	bAllowedShoot = true;
+	bDrawDebug = false;
 }
 
 void AGunBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -59,6 +60,8 @@ void AGunBase::SetAmmoCurrent(int32 NewCurrent)
 	);
 
 	OnAmmoNewCurrent.Broadcast(Gun.Ammo.AmmoCurrentInMag);
+
+	if (GetAmmoCurrent() == 0) { OnAmmoNull.Broadcast(); }
 }
 
 void AGunBase::SetAmmoTotal(int32 NewTotal)
@@ -84,6 +87,9 @@ void AGunBase::OnFire()
 
 		// Отнимаем один патрон.
 		SetAmmoCurrent(GetAmmoCurrent() - 1);
+
+		// Трейс стрельбы.
+		CalculateFiringTrace();
 
 		OnBeginFire.Broadcast();
 	}
@@ -192,6 +198,89 @@ void AGunBase::SpawnEffectMuzzle()
 			GunMesh->GetSocketRotation(MUZZLE_SOCKET),
 			EAttachLocation::KeepWorldPosition,
 			true
+		);
+	}
+}
+
+bool AGunBase::CalculateTraceFromCamera(FVector& Start, FVector& End)
+{
+	if (GetCameraOwner())
+	{
+		// Записываем стартовкую позицию камеры.
+		Start = GetCameraOwner()->GetComponentLocation();
+
+		// Высчитываем конечную.
+		End = CalculateSpread(GetCameraOwner()->GetForwardVector() * 100000.0f) + Start;
+
+		return true;
+	}
+
+	return false;
+}
+
+UCameraComponent* AGunBase::GetCameraOwner()
+{
+	if (!CameraOwner) {
+		if (GetOwner()) {
+			CameraOwner = GetOwner()->FindComponentByClass<UCameraComponent>();
+		}
+	}
+
+	return CameraOwner;
+}
+
+FVector AGunBase::CalculateSpread(const FVector& InputTrace) const
+{
+	return InputTrace + FVector(
+		UKismetMathLibrary::RandomFloatInRange(Gun.Spread * (-1), Gun.Spread),  // X
+		UKismetMathLibrary::RandomFloatInRange(Gun.Spread * (-1), Gun.Spread),  // Y
+		UKismetMathLibrary::RandomFloatInRange(Gun.Spread * (-1), Gun.Spread)   // Z
+	);
+}
+
+bool AGunBase::CalculateFiringTrace()
+{
+	// Координаты для спавна трейса.
+	FVector StartLoc;
+	FVector EndLoc;
+
+	CalculateTraceFromCamera(StartLoc, EndLoc);
+
+	FHitResult Result;
+
+	// Создаем лайн трейс.
+	const bool bHit = UKismetSystemLibrary::LineTraceSingle(
+		this,
+		StartLoc,
+		EndLoc,
+		Gun.FireTrace,
+		true,
+		{ this, GetOwner() },
+		bDrawDebug ? EDrawDebugTrace::ForDuration : EDrawDebugTrace::None,
+		Result,
+		true
+	);
+
+	CheckTraceHit(Result);
+	OnFireHitResult.Broadcast(Result);
+
+	return bHit;
+}
+
+void AGunBase::CheckTraceHit(const FHitResult& Hit)
+{
+	// Если трейс попал во что-то.
+	if (Hit.bBlockingHit)
+	{
+		// Наносим точечный урон.
+		UGameplayStatics::ApplyPointDamage(
+			Hit.GetActor(),
+			Gun.Damage,
+			FVector(),
+			Hit,
+			GetOwner() != nullptr ? GetOwner()->GetInstigatorController() : nullptr,
+			GetOwner(),
+			UDamageType::StaticClass()
 		);
 	}
 }
