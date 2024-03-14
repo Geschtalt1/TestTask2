@@ -67,7 +67,7 @@ public:
 	int32 AmmoTotalCurrent = 0;
 
 public:
-	/** Возращает сколько не хватает патронов. */
+	/** Возращает кол-во патрон, сколько не хватает в текущий момент в магазине. */
 	FORCEINLINE int32 FindAddAmmo() const { return AmmoMaxInMag - AmmoCurrentInMag; }
 
 };
@@ -214,16 +214,17 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
 	/** Устанавливает доступ к стрельбе из пистолета. */
 	void SetAllowedShoot(bool bEnabled);
 	
 	/** Проигрывает звук на скелете пистолета. */
-	void PlaySoundAction(USoundBase* const Sound, const FName SocketAttach = FName());
+	void PlaySoundFire();
 
 	/** Спавн эффекта вспышки. */
-	void SpawnEffectMuzzle();
+	void SpawnEffectMuzzle(); // Должен быть мультикаст
 
 private:
 	/** Скелет пистолета. */
@@ -241,7 +242,7 @@ private:
 
 private:
 	/** Настройка пистолета. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", ExposeOnSpawn = "true"), Category = "Gun Setting")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, meta = (AllowPrivateAccess = "true", ExposeOnSpawn = "true"), Category = "Gun Setting")
 	FGun Gun;
 
 	/** Таймер стрельбы. */

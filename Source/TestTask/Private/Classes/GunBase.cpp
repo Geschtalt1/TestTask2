@@ -13,6 +13,7 @@
 #include "NiagaraComponent.h"
 
 #include "Sound/SoundCue.h"
+#include "Net/UnrealNetwork.h"
 
 const FName AGunBase::MUZZLE_SOCKET = { "muzzle" };
 const FName AGunBase::IRONSIGHT_SOCKET = { "ironsight" };
@@ -28,6 +29,14 @@ AGunBase::AGunBase(const FObjectInitializer& ObjectInitializer)
 
 	bFire = false;
 	bAllowedShoot = true;
+}
+
+void AGunBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	// Включаем репликацию переменной.
+	DOREPLIFETIME(AGunBase, Gun);
 }
 
 void AGunBase::BeginPlay()
@@ -70,7 +79,7 @@ void AGunBase::OnFire()
 		bFire = true;
 
 		// Проигрываем звук выстрела и вспышку.
-		PlaySoundAction(Gun.ShootSound, MUZZLE_SOCKET);
+		PlaySoundFire();
 		SpawnEffectMuzzle();
 
 		// Отнимаем один патрон.
@@ -159,9 +168,15 @@ void AGunBase::SetAllowedShoot(bool bEnabled)
 	bAllowedShoot = bEnabled;
 }
 
-void AGunBase::PlaySoundAction(USoundBase* const Sound, const FName SocketAttach)
+void AGunBase::PlaySoundFire()
 {
-	UGameplayStatics::SpawnSoundAttached(Sound, GunMesh, SocketAttach);
+	UGameplayStatics::SpawnSoundAttached(
+		Gun.ShootSound,
+		GunMesh,
+		MUZZLE_SOCKET,
+		GunMesh->GetSocketLocation(MUZZLE_SOCKET),
+		EAttachLocation::SnapToTarget
+	);
 }
 
 void AGunBase::SpawnEffectMuzzle()
